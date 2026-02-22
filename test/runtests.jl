@@ -16,6 +16,29 @@ function auth_client()
     )
 end
 
+# Binance blocks requests from certain regions (e.g. GitHub Actions runners in the US).
+# This helper runs the testset body and skips gracefully on a geo-restriction response
+# (HTTP 451 / "restricted location") so CI does not fail for infrastructure reasons.
+_is_geo_blocked(e::BinanceError) = occursin("restricted location", e.msg)
+_is_geo_blocked(e) = false
+
+macro skipable_testset(name, body)
+    quote
+        @testset $name begin
+            try
+                $(esc(body))
+            catch e
+                if _is_geo_blocked(e)
+                    @warn "Skipping \"" * $name * "\": Binance geo-restriction (HTTP 451)"
+                    @test_broken false
+                else
+                    rethrow()
+                end
+            end
+        end
+    end
+end
+
 # ---------------------------------------------------------------------------
 # Unit tests — no network required
 # ---------------------------------------------------------------------------
@@ -76,7 +99,7 @@ end
 # Integration tests — hit Binance public endpoints
 # ---------------------------------------------------------------------------
 
-@testset "klines — BTCUSDT 1h last 10 candles" begin
+@skipable_testset "klines — BTCUSDT 1h last 10 candles" begin
     client = BinanceClient()
     df = klines(client, "BTCUSDT", "1h"; limit=10)
 
@@ -109,13 +132,13 @@ end
     @test all(df.volume .>= 0)
 end
 
-@testset "klines — single candle returns 1-row DataFrame" begin
+@skipable_testset "klines — single candle returns 1-row DataFrame" begin
     client = BinanceClient()
     df = klines(client, "ETHUSDT", "1d"; limit=1)
     @test nrow(df) == 1
 end
 
-@testset "ticker_price — single symbol" begin
+@skipable_testset "ticker_price — single symbol" begin
     client = BinanceClient()
     result = ticker_price(client; symbol="BTCUSDT")
     @test result isa Dict
@@ -124,7 +147,7 @@ end
     @test parse(Float64, result["price"]) > 0
 end
 
-@testset "ticker_price — multiple symbols" begin
+@skipable_testset "ticker_price — multiple symbols" begin
     client = BinanceClient()
     result = ticker_price(client; symbols=["BTCUSDT", "ETHUSDT"])
     @test result isa Vector
@@ -134,14 +157,14 @@ end
     @test "ETHUSDT" in syms
 end
 
-@testset "ticker_price — all symbols" begin
+@skipable_testset "ticker_price — all symbols" begin
     client = BinanceClient()
     result = ticker_price(client)
     @test result isa Vector
     @test length(result) > 100  # Binance has many trading pairs
 end
 
-@testset "exchange_info — single symbol" begin
+@skipable_testset "exchange_info — single symbol" begin
     client = BinanceClient()
     info = exchange_info(client; symbol="BTCUSDT")
     @test info isa Dict
@@ -151,7 +174,7 @@ end
     @test info["symbols"][1]["symbol"] == "BTCUSDT"
 end
 
-@testset "BinanceError is thrown for invalid symbol" begin
+@skipable_testset "BinanceError is thrown for invalid symbol" begin
     client = BinanceClient()
     @test_throws BinanceError klines(client, "INVALID_XYZ_PAIR", "1h"; limit=1)
 end
