@@ -7,7 +7,8 @@ using Dates
 # Helpers
 # ---------------------------------------------------------------------------
 
-const HAS_CREDENTIALS = haskey(ENV, "BINANCE_API_KEY") && haskey(ENV, "BINANCE_SECRET_KEY")
+const HAS_CREDENTIALS = get(ENV, "BINANCE_API_KEY", "")    != "" &&
+                        get(ENV, "BINANCE_SECRET_KEY", "") != ""
 
 function auth_client()
     BinanceClient(
