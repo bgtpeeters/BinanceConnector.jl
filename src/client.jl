@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 
 """
-    BinanceClient(; base_url, api_key, secret_key, recv_window)
+    BinanceClient(; base_url, api_key, secret_key, recv_window, cache_ttl)
 
 Configuration object passed to every API function.
 
@@ -17,6 +17,8 @@ Configuration object passed to every API function.
                           Required for signed endpoints. Default: `""`.
 - `recv_window::Int`    — Milliseconds the server accepts a signed request
                           after its timestamp. Max 60000. Default: `5000`.
+- `cache_ttl::Float64`  — Seconds to cache `exchange_info` responses per symbol.
+                          Default: `3600.0` (1 hour). Set to `0.0` to disable.
 
 # Examples
 
@@ -33,20 +35,26 @@ Configuration object passed to every API function.
         secret_key = "testnet_secret",
     )
 """
-struct BinanceClient
-    base_url    ::String
-    api_key     ::String
-    secret_key  ::String
-    recv_window ::Int
+mutable struct BinanceClient
+    const base_url    ::String
+    const api_key     ::String
+    const secret_key  ::String
+    const recv_window ::Int
+    const cache_ttl   ::Float64
+    _exchange_info_cache ::Dict{String, Tuple{Dict{String,Any}, Float64}}
 end
 
 function BinanceClient(;
-    base_url    ::String = "https://api.binance.com",
-    api_key     ::String = "",
-    secret_key  ::String = "",
-    recv_window ::Int    = 5000,
+    base_url    ::String  = "https://api.binance.com",
+    api_key     ::String  = "",
+    secret_key  ::String  = "",
+    recv_window ::Int     = 5000,
+    cache_ttl   ::Float64 = 3600.0,
 )
-    return BinanceClient(base_url, api_key, secret_key, recv_window)
+    return BinanceClient(
+        base_url, api_key, secret_key, recv_window, cache_ttl,
+        Dict{String, Tuple{Dict{String,Any}, Float64}}(),
+    )
 end
 
 # ---------------------------------------------------------------------------

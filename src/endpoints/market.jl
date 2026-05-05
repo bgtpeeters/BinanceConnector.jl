@@ -198,6 +198,26 @@ function exchange_info(
     symbol  ::Union{String,Nothing}        = nothing,
     symbols ::Union{Vector{String},Nothing} = nothing,
 )::Dict
+    # Cache key: symbol string for single-symbol queries, "" for full (no-filter)
+    # queries. Multi-symbol queries are not cached (uncommon path).
+    cache_key = if symbols !== nothing
+        nothing
+    elseif symbol !== nothing
+        symbol
+    else
+        ""
+    end
+
+    if cache_key !== nothing && client.cache_ttl > 0.0
+        entry = get(client._exchange_info_cache, cache_key, nothing)
+        if entry !== nothing
+            (cached_data, cached_at) = entry
+            if time() - cached_at < client.cache_ttl
+                return cached_data
+            end
+        end
+    end
+
     params = Dict{String,Any}()
     if symbol !== nothing
         params["symbol"] = symbol
@@ -206,8 +226,13 @@ function exchange_info(
     end
 
     raw = _public_get(client, "/api/v3/exchangeInfo"; params=params)
-    # Convert the top-level JSON3.Object to a plain Dict for ease of use.
-    return _json3_to_dict(raw)
+    result = _json3_to_dict(raw)
+
+    if cache_key !== nothing && client.cache_ttl > 0.0
+        client._exchange_info_cache[cache_key] = (result, time())
+    end
+
+    return result
 end
 
 # ---------------------------------------------------------------------------

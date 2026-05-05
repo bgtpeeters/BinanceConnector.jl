@@ -31,16 +31,50 @@ function _hmac_sha256_hex(secret::String, message::String)::String
 end
 
 """
+    _format_number_for_url(v::Real) -> String
+
+Format a numeric value for use in a Binance query string.
+Integers are converted directly; floating-point values are rounded to 8
+decimal places and formatted in fixed-point notation (never scientific notation),
+with trailing zeros stripped.
+
+This prevents floating-point artifacts such as `"0.0014700000000000002"` that
+cause Binance to reject requests with a precision error.
+
+Implementation uses integer arithmetic to avoid any additional floating-point
+representation issues and to guarantee fixed-point output.
+"""
+function _format_number_for_url(v::Real)::String
+    v isa Integer && return string(v)
+    # Round to 8 decimal places, then express as integer * 10^-8.
+    # This avoids both floating-point artifacts and scientific notation.
+    int_rep = round(Int64, round(v, digits=8) * 1e8)
+    int_rep == 0 && return "0"
+    neg = int_rep < 0
+    int_rep = abs(int_rep)
+    # Pad to at least 9 digits so splitting off 8 decimal digits always works.
+    s = lpad(string(int_rep), 9, '0')
+    result = s[1:end-8] * "." * s[end-7:end]
+    result = rstrip(result, '0')
+    endswith(result, '.') && (result = result[1:end-1])
+    neg && (result = "-" * result)
+    return result
+end
+
+"""
     _build_query(params::AbstractDict) -> String
 
 Encode a dictionary of parameters into a URL query string.
 Keys and values are converted to strings; nothing values are skipped.
+Numeric (Real) values are formatted via `_format_number_for_url` to avoid
+floating-point artifacts in the query string.
 """
 function _build_query(params::AbstractDict)::String
     parts = String[]
     for (k, v) in params
         v === nothing && continue
-        push!(parts, string(k) * "=" * _urlencode(string(v)))
+        v_str = v isa Real ? _format_number_for_url(v) : string(v)
+        push!(parts, string(k) * "=" * _urlencode(v_str))
     end
     return join(parts, "&")
 end

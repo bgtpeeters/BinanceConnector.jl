@@ -8,6 +8,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- `BinanceClient` now accepts a `cache_ttl` keyword argument (default 3600 s).
+  `exchange_info` results are cached per symbol for that duration, avoiding
+  redundant API calls when placing multiple orders. Set `cache_ttl=0.0` to disable.
+- `new_order` and `new_order_test` now automatically round `quantity`, `price`,
+  `stopPrice`, and `icebergQty` to the symbol's `LOT_SIZE` step and `PRICE_FILTER`
+  tick precision before sending, eliminating "too much precision" rejections.
+- `new_order` checks minimum notional value for `MARKET`+`quantity` orders against
+  the symbol's `MIN_NOTIONAL` filter using the live price, and throws `BinanceError`
+  with a clear message if the order value is too small.
+
+### Fixed
+- `_build_query` now formats `Real`-typed parameters with up to 8 decimal places
+  in fixed-point notation, preventing floating-point artifacts such as
+  `"0.0014700000000000002"` from reaching the API.
+
+## [0.1.0] — Initial release
+
+### Added
 - `BinanceClient` struct with keyword constructor and testnet support.
 - `BinanceError` exception type with Binance error code and message.
 - `klines` — returns a typed `DataFrame` with 11 columns (oldest → newest).

@@ -76,9 +76,12 @@ BinanceClient(;
     base_url    = "https://api.binance.com",  # or testnet URL
     api_key     = "",
     secret_key  = "",
-    recv_window = 5000,   # ms; max 60000
+    recv_window = 5000,    # ms; max 60000
+    cache_ttl   = 3600.0,  # seconds to cache exchange_info per symbol; 0.0 disables
 )
 ```
+
+`BinanceClient` caches `exchange_info` results per symbol for `cache_ttl` seconds (default 1 hour). This avoids redundant API calls when placing orders, since `new_order` and `new_order_test` fetch exchange filters to automatically round `quantity` and `price` to the symbol's allowed precision before sending. Without this the Binance API rejects orders with a precision error.
 
 ### `klines`
 

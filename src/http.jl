@@ -20,8 +20,12 @@ function _handle_response(resp::HTTP.Response)
     body = String(resp.body)
 
     # Always parse JSON so we can inspect the payload for Binance error codes.
+    # Use codeunits(body) (bytes from the already-decoded String) rather than
+    # the raw String to avoid JSON3 v1.14+ treating short strings as filenames
+    # and calling stat() on them. Note: String(resp.body) steals resp.body's
+    # data, so we must not re-read resp.body after that call.
     parsed = try
-        JSON3.read(body)
+        JSON3.read(codeunits(body))
     catch
         # Unparseable body — fall back to a generic error with the HTTP status.
         if resp.status < 200 || resp.status >= 300

@@ -4,7 +4,30 @@
 #   user_asset(client; kwargs...)                     POST /sapi/v3/asset/getUserAsset
 #   new_order(client, symbol, side, type; kwargs...)  POST /api/v3/order
 #   new_order_test(client, symbol, side, type; ...)   POST /api/v3/order/test
+#
+# Internal helpers (not exported):
+#   _get_symbol_filters   — returns the filter dict for a symbol from exchange_info
+#   _round_to_step_precision — rounds a value to the nearest step_size multiple
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Precision helpers
+# ---------------------------------------------------------------------------
+
+function _round_to_step_precision(value::Real, step_size::Real)::Float64
+    step_size <= 0.0 && return Float64(value)
+    return round(value / step_size) * step_size
+end
+
+# Returns a Dict mapping filterType → filter Dict for the given symbol.
+# Results come from exchange_info, which is cached by default.
+function _get_symbol_filters(client::BinanceClient, symbol::String)::Dict{String,Any}
+    info = exchange_info(client; symbol=symbol)
+    syms = get(info, "symbols", Any[])
+    isempty(syms) && return Dict{String,Any}()
+    filters = get(syms[1], "filters", Any[])
+    return Dict{String,Any}(f["filterType"] => f for f in filters)
+end
 
 # ---------------------------------------------------------------------------
 # user_asset
@@ -101,6 +124,38 @@ function new_order(
     icebergQty         ::Union{Real,Nothing}   = nothing,
     newOrderRespType   ::Union{String,Nothing} = nothing,
 )::Dict
+    filters = _get_symbol_filters(client, symbol)
+
+    if quantity !== nothing && haskey(filters, "LOT_SIZE")
+        step = parse(Float64, filters["LOT_SIZE"]["stepSize"])
+        quantity = _round_to_step_precision(quantity, step)
+    end
+    if price !== nothing && haskey(filters, "PRICE_FILTER")
+        tick = parse(Float64, filters["PRICE_FILTER"]["tickSize"])
+        price = _round_to_step_precision(price, tick)
+    end
+    if stopPrice !== nothing && haskey(filters, "PRICE_FILTER")
+        tick = parse(Float64, filters["PRICE_FILTER"]["tickSize"])
+        stopPrice = _round_to_step_precision(stopPrice, tick)
+    end
+    if icebergQty !== nothing && haskey(filters, "LOT_SIZE")
+        step = parse(Float64, filters["LOT_SIZE"]["stepSize"])
+        icebergQty = _round_to_step_precision(icebergQty, step)
+    end
+
+    # For MARKET+quantity orders, check minimum notional value using live price.
+    if type == "MARKET" && quantity !== nothing && haskey(filters, "MIN_NOTIONAL")
+        min_notional = parse(Float64, filters["MIN_NOTIONAL"]["minNotional"])
+        price_info   = ticker_price(client; symbol=symbol)
+        live_price   = parse(Float64, price_info["price"])
+        order_value  = Float64(quantity) * live_price
+        if order_value < min_notional
+            throw(BinanceError(-1013,
+                "Order value $(round(order_value; digits=8)) is below minimum " *
+                "notional $(min_notional) for $(symbol)"))
+        end
+    end
+
     params = Dict{String,Any}(
         "symbol" => symbol,
         "side"   => side,
@@ -157,6 +212,25 @@ function new_order_test(
     newOrderRespType       ::Union{String,Nothing} = nothing,
     computeCommissionRates ::Union{Bool,Nothing}   = nothing,
 )::Dict
+    filters = _get_symbol_filters(client, symbol)
+
+    if quantity !== nothing && haskey(filters, "LOT_SIZE")
+        step = parse(Float64, filters["LOT_SIZE"]["stepSize"])
+        quantity = _round_to_step_precision(quantity, step)
+    end
+    if price !== nothing && haskey(filters, "PRICE_FILTER")
+        tick = parse(Float64, filters["PRICE_FILTER"]["tickSize"])
+        price = _round_to_step_precision(price, tick)
+    end
+    if stopPrice !== nothing && haskey(filters, "PRICE_FILTER")
+        tick = parse(Float64, filters["PRICE_FILTER"]["tickSize"])
+        stopPrice = _round_to_step_precision(stopPrice, tick)
+    end
+    if icebergQty !== nothing && haskey(filters, "LOT_SIZE")
+        step = parse(Float64, filters["LOT_SIZE"]["stepSize"])
+        icebergQty = _round_to_step_precision(icebergQty, step)
+    end
+
     params = Dict{String,Any}(
         "symbol" => symbol,
         "side"   => side,
